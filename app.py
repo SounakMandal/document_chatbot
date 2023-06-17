@@ -10,6 +10,11 @@ from langchain.chat_models import ChatOpenAI
 from html_template import css, bot_template, user_template
 
 
+def initialize_state(variable, value):
+    if variable not in st.session_state:
+        st.session_state[variable] = value
+
+
 def get_text(documents):
     text = ""
     for document in documents:
@@ -39,16 +44,40 @@ def get_conversation_chain(database):
     )
 
 
+def process_query(query, error_container, conversation_container):
+    if st.session_state["conversation"] is None:
+        error_container.write("No documents provided")
+    else:
+        error_container.empty()
+        response = st.session_state.conversation(
+            {"question": query}
+        )
+        for index, message in enumerate(response["chat_history"]):
+            if index % 2 == 0:
+                conversation_container.write(
+                    user_template.replace("{{MSG}}", message.content),
+                    unsafe_allow_html=True,
+                )
+            else:
+                conversation_container.write(
+                    bot_template.replace("{{MSG}}", message.content),
+                    unsafe_allow_html=True,
+                )
+
+
 def main():
     # Load configuration variables
     load_dotenv()
 
     # Initialize persistent variables
-    if "conversation" not in st.session_state:
-        st.session_state.conversation = None
+    initialize_state("conversation", None)
 
     # Set page header
-    st.set_page_config(page_title="Chat with your documents", page_icon=":books:")
+    st.set_page_config(
+        page_title="Chat with your documents", 
+        page_icon=":books:",
+        layout="wide"
+    )
     st.header("Chat with your documents :books:")
     st.markdown(css, unsafe_allow_html=True)
 
@@ -65,32 +94,21 @@ def main():
                 vector_database = create_database(text_chunks)
                 st.session_state.conversation = get_conversation_chain(vector_database)
 
-    # Display the container that stores all the conversations
+    # Split app into containers
     conversation_container = st.container()
-    placeholder = st.empty()
-    error = st.empty()
+    question_container = st.empty()
+    error_container = st.empty()
 
     # Display the query ans answer
-    query = placeholder.text_input(
-        label="Ask a question about your documents", key="input_box", value=""
+    query = question_container.text_input(
+        label="Ask a question about your documents", key="query", value=""
     )
-    if query:
-        if st.session_state.conversation is None:
-            error.write("No documents provided")
-        else:
-            error.empty()
-            response = st.session_state.conversation({"question": query})
-            for index, message in enumerate(response["chat_history"]):
-                if index % 2 == 0:
-                    conversation_container.write(
-                        user_template.replace("{{MSG}}", message.content),
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    conversation_container.write(
-                        bot_template.replace("{{MSG}}", message.content),
-                        unsafe_allow_html=True,
-                    )
+    if query != "":
+        process_query(
+            query, 
+            error_container, 
+            conversation_container
+        )
 
 
 if __name__ == "__main__":
